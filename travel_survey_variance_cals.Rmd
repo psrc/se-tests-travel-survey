@@ -1,0 +1,115 @@
+---
+title: "standard-error-assumption"
+author: "suzanne"
+date: "2023-03-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(rlang)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(forcats)
+library(odbc)
+library(DBI)
+library(tidyr)
+library(psrcplot)
+library(psrc.travelsurvey)
+library(tidyverse)
+library(knitr)
+library(magick)
+library(openxlsx)
+library(htmlwidgets)
+library(magrittr)
+```
+
+We've been trying to understand how our assumptions can impact resulting standard errors. This may lead us to be more or confident in our results; it may lead us to supress data when we think it's not meaningful.
+
+We could simply assume random sampling and ignore weighting to calculate standard errors. We've started to use the r survey package to include weights in the standard error estimation, which leads to 
+
+some notes:
+https://ww2.amstat.org/meetings/ices/2007/proceedings/ICES2007-000216.PDF
+
+For probability-based sample surveys, most estimates are nonlinear statistics. For example, a mean or proportion, which is expressed as Σwy/Σw, 1 is nonlinear because the denominator is a survey estimate of the (unknown) population total. In this situation, the variances of the estimates cannot be expressed in closed form. One common procedure for estimating variances of survey statistics is the Taylor series linearization procedure.
+
+This procedure takes the firstorder Taylor series approximation of the nonlinear statistic and then substitutes the linear representation into the appropriate variance formula based on the sample design. Woodruff presented the mathematical formulation of this procedure
+
+The variance estimation must also take into account stratification and clustering. There are other variance estimation procedures, such as jackknife, bootstrap, and balanced repeated replication (BRR). This paper will focus on the BRR method for replication. The BRR procedure is an alternative variance estimation procedure that computes the variance based on a balanced set of pseudo-replicates.
+
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3939068/
+
+This article considers the situation that arises when a survey data producer has collected data from a sample with a complex design (possibly featuring stratification of the population, cluster sampling, and / or unequal probabilities of selection), and for various reasons only provides secondary analysts of those survey data with a final survey weight for each respondent and “average” design effects for survey estimates computed from the data. In general, these “average” design effects, presumably computed by the data producer in a way that fully accounts for all of the complex sampling features, already incorporate possible increases in sampling variance due to the use of the survey weights in estimation. The secondary analyst of the survey data who then 1) uses the provided information to compute weighted estimates, 2) computes design-based standard errors reflecting variance in the weights (using Taylor Series Linearization, for example), and 3) inflates the estimated variances using the “average” design effects provided is applying a “double” adjustment to the standard errors for the effect of weighting on the variance estimates, leading to overly conservative inferences. 
+This is known as “Taylor Series Linearization,” or TSL, and this variance estimation method introduces a slight positive bias in variance estimates (and slightly conservative inferences about the population of interest
+
+Replicated variance estimation methods, such as Jackknife Repeated Replication (JRR) and Balanced Repeated Replication (BRR), are also possible when these design codes are available. In the latter case, when only the final survey weight and replicate survey weights are available, JRR and BRR can be used to estimate variances. Asymptotically, TSL, JRR, and BRR converge to very similar variance estimates for most parameter estimates (Rao and Wu, 1985).
+
+https://www.displayr.com/the-correct-treatment-of-sampling-weights-in-statistical-tests/
+
+https://psidonline.isr.umich.edu/Publications/Papers/tsp/2011-05_Heeringa_Berglung_Khan.pdf
+
+So, Taylor Series Linearization utilizes a set of polynomial terms to adjust/complicate a linear equation to better fit what might be a non-linear system. One benefit there, is it takes the strata directly into account in forming the equation. The replication methods all approximate by measuring the variance among repeated samples of the survey observations themselves. That's essentially a brute force method relying on computational power. Although there's no consensus on one method being superior to another, it looks like TSL is generally the default for many softwares and published survey results. One analysis showed that TSL estimates tended to slightly overestimate variance, but that offset a couple aspects of their survey whose variance couldn't be captured via statistical means (imputation of some records, and variance around the population estimates the survey sampling was predicated on). The Balanced Repeated Replication method (BRR) slightly underestimated variance because it didn't capture survey design in terms of starting from base weights and adjusting (re)sampled result independently. wp_13004.pdf (ahrq.gov) Either set could be used, but the authors felt the more conservative TSL stats were suitable given their circumstances. I don't know the extent to which we'd say there are sources of uncaptured variance in the hhts, but we can certainly convert to a replicate design and look at the variance differences. If the range is narrow, we'll know the methods are essentially substitutable.I do think it'd be a reasonable question to pose to Hana or Prof. Lumley, whether the cluster should only reflect households, or say for trips, whether it should include the nesting down to person and day. That's an item on which the literature seems a bit ambiguous.
+
+Data items to test: 
+households and residential displacement
+workers and telecommute rates
+trips by mode
+
+```{r}
+source(here::here('womens_history_story_draft_datacrunching.R'))
+```
+
+```{r}
+work_loc_trend_new_code<-work_loc_trend
+```
+
+
+```{r}
+summs_2017_2019_dist_new_code<-summs_2017_2019_dist
+```
+
+
+```{r}
+trips_by_mode_transit_new_code<-trips_by_mode_transit
+```
+
+```{r}
+devtools::install_github('psrc/psrc.travelsurvey', ref='b87a002' )
+```
+
+```{r setup, include=FALSE}
+library(rlang)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(forcats)
+library(odbc)
+library(DBI)
+library(tidyr)
+library(psrcplot)
+library(psrc.travelsurvey)
+library(tidyverse)
+library(knitr)
+library(magick)
+library(openxlsx)
+library(htmlwidgets)
+library(magrittr)
+```
+
+```{r}
+source(here::here('womens_history_story_draft_datacrunching.R'))
+```
+
+```{r}
+work_loc_compare<- merge(work_loc_trend_new_code, work_loc_trend, by = c('survey', 'race_eth_poc_update', 'gender'), suffixes=c('_stratclust', '_old'))
+```
+
+
+```{r}
+trip_dist_compare<- merge(summs_2017_2019_dist_new_code, summs_2017_2019_dist, by= 'gender', suffixes=c('_stratclust', 'old'))
+```
+
+
+```{r}
+trips_by_mode_transit_compare<-merge(trips_by_mode_transit_new_code, trips_by_mode_transit, by = c('survey', 'race_eth_poc_update', 'gender'), suffixes=c('_stratclust', '_old'))
+```
